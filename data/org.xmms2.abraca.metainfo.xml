@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Copyright 2014 Daniel Svensson <dsvensson@email.com> -->
-<application>
-  <id type="desktop">abraca.desktop</id>
+<component type="desktop-application">
+  <id>org.xmms2.abraca</id>
   <metadata_license>CC-BY-SA-3.0</metadata_license>
-  <project_license>GPL-2.0+</project_license>
+  <project_license>GPL-2.0-or-later</project_license>
   <name>Abraca</name>
   <summary>A graphical interface for controlling XMMS2</summary>
+
+  <launchable type="desktop-id">org.xmms2.abraca.desktop</launchable>
+
   <description>
     <p>
       Abraca is a client for the XMMS2 music player which is capable of
@@ -20,9 +23,26 @@
       <li>Equalizer configuration</li>
     </ul>
   </description>
+
   <screenshots>
-    <screenshot type="default">https://raw.githubusercontent.com/Abraca/Abraca/appdata/abraca.png</screenshot>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/Abraca/Abraca/appdata/abraca.png</image>
+    </screenshot>
   </screenshots>
+
   <url type="homepage">https://github.com/Abraca/Abraca</url>
-  <updatecontact>dsvensson@gmail.com</updatecontact>
-</application>
+  <url type="bugtracker">https://github.com/Abraca/Abraca/issues</url>
+  <url type="vcs-browser">https://github.com/Abraca/Abraca</url>
+
+  <developer id="org.xmms2">
+    <name>The Abraca Team</name>
+  </developer>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.8.2" date="2019-01-01" />
+  </releases>
+
+  <update_contact>dsvensson@gmail.com</update_contact>
+</component>

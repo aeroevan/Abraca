@@ -2,9 +2,10 @@
 Name=Abraca
 Comment=Manage Music
 Comment[de]=Musik verwalten
-Categories=GNOME;Application;AudioVideo;
+Categories=AudioVideo;Audio;Player;
 Keywords=Audio;Song;Playlist;Music;xmms2
 Exec=abraca
-Icon=abraca-192
+Icon=org.xmms2.abraca
+StartupWMClass=org.xmms2.abraca
 Terminal=false
 Type=Application

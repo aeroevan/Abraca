@@ -1,0 +1,108 @@
+# Flatpak manifest for Abraca — "Option B": the XMMS2 daemon is bundled
+# INSIDE the sandbox, so the flatpak is a self-contained music player.
+#
+# Abraca auto-launches xmms2d when it can't reach a running server
+# (see abraca-client.vala reconnect()), and since both the daemon and the
+# client run in the same sandbox they share one filesystem view and agree
+# on the default IPC socket path — no XMMS_PATH wiring needed.
+#
+# Build locally:
+#   flatpak install flathub org.gnome.Sdk//48 org.gnome.Platform//48
+#   flatpak-builder --user --install --force-clean build-flatpak org.xmms2.abraca.yaml
+#   flatpak run org.xmms2.abraca
+#
+# This is a STARTER: it builds a working daemon with PulseAudio/PipeWire
+# output and a core codec set. Expand `modules` + xmms2 plugins for more
+# formats (see notes at the bottom).
+
+app-id: org.xmms2.abraca
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: abraca
+
+finish-args:
+  # Windowing / rendering
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Audio out for the bundled daemon (the PulseAudio socket is also served
+  # by pipewire-pulse on modern systems)
+  - --socket=pulseaudio
+  # Remote XMMS2 servers, HTTP/stream input, and mDNS discovery
+  - --share=network
+  # Let the bundled daemon read the user's music library
+  - --filesystem=xdg-music:ro
+  - --filesystem=xdg-download:ro
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/*.a
+  - /lib/*.la
+  - /share/man
+  - /share/doc
+  - '*.a'
+  - '*.la'
+
+modules:
+  # --- Codec libraries the bundled daemon links against -------------------
+  # NOTE: libogg/libvorbis/flac/opus are frequently already present in the
+  # freedesktop base runtime (GStreamer deps). If a build reports them as
+  # already available you can delete the corresponding module here. mpg123
+  # (MP3) is the one most likely to be missing, so it is included.
+
+  - name: mpg123
+    buildsystem: autotools
+    config-opts:
+      - --with-audio=dummy   # xmms2 handles output; we only need the decoder
+    sources:
+      - type: archive
+        url: https://download.sourceforge.net/project/mpg123/mpg123/1.32.9/mpg123-1.32.9.tar.bz2
+        sha256: 03b61e4004e960bacf2acdada03ed94d376e6aab27a601447bd4908d8407b291
+
+  - name: opusfile
+    buildsystem: autotools
+    config-opts:
+      - --disable-http
+    sources:
+      - type: archive
+        url: https://downloads.xiph.org/releases/opus/opusfile-0.12.tar.gz
+        sha256: 118d8601c12dd6a44f52423e68ca9083cc9f2bfe72da7a8c1acb22a80ae3550b
+
+  # --- libgee (gee-0.8) — NOT in the GNOME runtime -----------------------
+  - name: libgee
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libgee/0.20/libgee-0.20.8.tar.xz
+        sha256: 189815ac143d89867193b0c52b7dc31f3aa108a15f04d6b5dca2b6adfad0b0ee
+
+  # --- XMMS2 daemon + client libraries (waf build) -----------------------
+  - name: xmms2
+    buildsystem: simple
+    build-commands:
+      # --libdir=/app/lib is required: without it waf appends a "64" suffix
+      # (because /usr/lib64 exists in the SDK) and installs xmms2-client.pc to
+      # /app/lib64/pkgconfig, where the GNOME runtime's pkg-config never looks.
+      - python3 waf configure --prefix=/app --libdir=/app/lib
+        --without-optionals=perl,ruby,python,et,nycli,vistest,medialib-updater,mdns
+        --with-default-output-plugin=pulse
+      - python3 waf build -j${FLATPAK_BUILDER_N_JOBS}
+      - python3 waf install
+    sources:
+      - type: git
+        url: https://github.com/xmms2/xmms2-devel.git
+        tag: '0.9.7'
+        # xmms2 uses the s4 submodule (src/lib/s4). flatpak-builder fetches
+        # submodules on local builds; for Flathub (offline) pin it explicitly:
+        #   commit 8fdd7ee09cba6d1eeae81fd88926f9937c95551a
+
+  # --- Abraca ------------------------------------------------------------
+  - name: abraca
+    buildsystem: meson
+    # Building from the local working tree (feat/gtk4). Once the branch is
+    # merged/tagged upstream, swap this for a `type: git` source with a tag.
+    sources:
+      - type: dir
+        path: .

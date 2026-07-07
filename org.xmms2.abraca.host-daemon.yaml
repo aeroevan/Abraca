@@ -1,0 +1,95 @@
+# Flatpak manifest for Abraca — "Option A": the XMMS2 daemon runs on the HOST,
+# OUTSIDE the sandbox. This flatpak bundles ONLY the xmms2 *client* libraries
+# (no daemon, no codec/output plugins) and connects outward over TCP.
+#
+# Why TCP and not a unix socket?
+#   xmms2's default socket is unix:///tmp/xmms-ipc-<user> (utils_unix.c), and
+#   flatpak ALWAYS gives an app its own private /tmp — the host /tmp is never
+#   shared (not even with --filesystem=host). So the default socket is
+#   unreachable from inside the sandbox. TCP over --share=network sidesteps
+#   this entirely; loopback reaches the host daemon with no filesystem hole.
+#
+# On the host, start xmms2d with a TCP listener before launching Abraca:
+#   xmms2d -i tcp://127.0.0.1:9667
+# (9667 is xmms2's default TCP port; adjust XMMS_PATH below if you change it.)
+#
+# NB: this shares the app-id org.xmms2.abraca with the Option-B manifest, so
+# the two are mutually exclusive installs. Abraca's /tmp socket auto-discovery
+# (abraca-server-browser.vala) cannot see the host daemon through the private
+# /tmp — connection here relies on XMMS_PATH, which is set explicitly so the
+# reconnect-launches-daemon path never spawns a second daemon in the sandbox.
+#
+# Build locally:
+#   flatpak install flathub org.gnome.Sdk//50 org.gnome.Platform//50
+#   flatpak-builder --user --install --force-clean build-flatpak org.xmms2.abraca.host-daemon.yaml
+#   flatpak run org.xmms2.abraca
+
+app-id: org.xmms2.abraca
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: abraca
+
+finish-args:
+  # Windowing / rendering
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Reach the host daemon over loopback TCP, plus TCP/mDNS server discovery.
+  - --share=network
+  # Connect outward to the host daemon; keep this set so Abraca never tries to
+  # launch its own bundled daemon (there isn't one in this variant).
+  - --env=XMMS_PATH=tcp://127.0.0.1:9667
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/*.a
+  - /lib/*.la
+  - /share/man
+  - /share/doc
+  - '*.a'
+  - '*.la'
+
+modules:
+  # --- libgee (gee-0.8) — NOT in the GNOME runtime -----------------------
+  - name: libgee
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libgee/0.20/libgee-0.20.8.tar.xz
+        sha256: 189815ac143d89867193b0c52b7dc31f3aa108a15f04d6b5dca2b6adfad0b0ee
+
+  # --- XMMS2 CLIENT LIBRARIES ONLY (no daemon, no plugins) ----------------
+  # --without-xmms2d skips the daemon (and therefore all codec/output plugins
+  # and the s4 medialib backend). --libdir=/app/lib is required so
+  # xmms2-client.pc lands where the GNOME runtime's pkg-config looks (waf would
+  # otherwise append a "64" suffix because /usr/lib64 exists in the SDK).
+  #
+  # Every optional is disabled: xmms2 enables optionals opt-out, and the
+  # daemon-side ones (s4, sqlite2s4, migrate-collections, tests) reference the
+  # s4 target that --without-xmms2d removed, which breaks `waf build`. The
+  # mandatory subdirs still build xmmsclient + xmmsclient-glib — all Abraca needs.
+  - name: xmms2-client
+    buildsystem: simple
+    build-commands:
+      - python3 waf configure --prefix=/app --libdir=/app/lib --without-xmms2d
+        --without-optionals=perl,ruby,python,et,nycli,vistest,medialib-updater,mdns,launcher,s4,tests,sqlite2s4,migrate-collections,xmmsclient-ecore,xmmsclient++,xmmsclient++-glib,xmmsclient-cf,pixmaps
+      - python3 waf build -j${FLATPAK_BUILDER_N_JOBS}
+      - python3 waf install
+    sources:
+      - type: git
+        url: https://github.com/xmms2/xmms2-devel.git
+        tag: '0.9.7'
+        # s4 submodule (src/lib/s4) is medialib/daemon-side and unused here,
+        # but flatpak-builder still checks it out. For Flathub (offline) pin:
+        #   commit 8fdd7ee09cba6d1eeae81fd88926f9937c95551a
+
+  # --- Abraca ------------------------------------------------------------
+  - name: abraca
+    buildsystem: meson
+    # Building from the local working tree (feat/gtk4). Once the branch is
+    # merged/tagged upstream, swap this for a `type: git` source with a tag.
+    sources:
+      - type: dir
+        path: .
